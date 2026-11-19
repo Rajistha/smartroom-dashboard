@@ -1,712 +1,1285 @@
 <!doctype html>
 <html lang="id">
-<head>
-<meta charset="utf-8">
-<meta name="color-scheme" content="light">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>SmartRoom 01 | Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/mqtt@5.15.1/dist/mqtt.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
-<style>
-:root {
-  color-scheme: light;
-  --bg: #FFFFFF;
-  --panel: #FFFFFF;
-  --ink: #0F2547;
-  --muted: #5B6F8C;
-  --line: #DCE6F4;
-  --floor: #F4F8FE;
-  --wall: #1E3F7A;
-  --teal: #1D5FD8;
-  --teal-soft: #DEE9FC;
-  --alert: #C92A2A;
-  --alert-soft: #FBE4E4;
-  --danger: #C92A2A;
-  --lamp: #F2B200;
-  --hum: #0EA5C6;
-  --sky-day: #9AD4F7;
-  --sky-night: #1A2944;
-  --font: "Archivo", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
-}
-:root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-*, *::before, *::after { box-sizing: inherit; }
-html { scroll-padding-top: env(safe-area-inset-top, 0px); }
-body {
-  margin: 0; color: var(--ink);
-  background:
-    radial-gradient(900px 420px at 85% -80px, color-mix(in srgb, var(--teal) 16%, transparent), transparent 70%),
-    radial-gradient(700px 360px at -5% -60px, color-mix(in srgb, var(--hum) 12%, transparent), transparent 70%),
-    var(--bg);
-  background-attachment: fixed;
-  font-family: var(--font); font-size: 15px; line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
-button { font: inherit; color: inherit; }
-:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
-
-.wrap { max-width: 1240px; margin: 0 auto; padding: 20px 20px 40px; }
-
-/* ---------- Header ---------- */
-header.top {
-  padding-bottom: 16px; border-bottom: 1px solid var(--line);
-  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;
-  margin-bottom: 18px;
-}
-header.top h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: center; }
-header.top h1 .logo { grid-row: span 2; width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; color: #fff;
-  background: linear-gradient(135deg, #1D5FD8, #4DA3FF); box-shadow: 0 8px 20px -4px color-mix(in srgb, #1D5FD8 55%, transparent); }
-header.top h1 .logo svg { width: 26px; height: 26px; }
-header.top h1 small { display: block; font-size: 14px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
-.conn { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; align-items: center; }
-.pill {
-  box-shadow: 0 1px 2px rgba(19,34,48,.06);
-  display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
-  border: 1px solid var(--line); border-radius: 999px; background: var(--panel);
-  font-size: 13px; font-weight: 500; white-space: nowrap;
-}
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
-.dot.ok { background: var(--teal); box-shadow: 0 0 0 4px color-mix(in srgb, var(--teal) 22%, transparent); }
-.dot.wait { background: var(--lamp); }
-.dot.bad { background: var(--alert); }
-.ghost {
-  border: 1px solid var(--line); background: transparent; border-radius: 999px;
-  padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
-}
-.ghost:hover { background: var(--panel); }
-.panel:has(.alerts) .empty { padding: 12px 0; }
-
-/* ---------- Alarm banner ---------- */
-.banner {
-  box-shadow: 0 10px 28px -10px rgba(201,42,42,.6); animation: pulse 1.2s ease-in-out infinite;
-  display: none; align-items: center; gap: 16px; flex-wrap: wrap;
-  background: var(--danger); color: #fff; border-radius: 12px;
-  padding: 14px 18px; margin-bottom: 18px;
-}
-.banner.show { display: flex; }
-.banner strong { font-size: 18px; }
-.banner span { opacity: .9; }
-.banner button {
-  margin-left: auto; background: #fff; color: #9B1C1C; border: 0; border-radius: 8px;
-  padding: 10px 18px; font-weight: 700; cursor: pointer;
-}
-
-/* ---------- Main grid ---------- */
-.grid { display: grid; gap: 18px; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 20px 22px;
-  box-shadow: 0 1px 2px rgba(15,37,71,.04), 0 14px 32px -16px rgba(29,95,216,.28); }
-.panel h2 { color: var(--teal) !important; font-size: 12px; font-weight: 700; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
-.panel .hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
-
-/* Room plan */
-.room-panel { padding: 14px; }
-.room-panel svg { width: 100%; height: auto; display: block; }
-.room-panel figcaption { color: var(--muted); font-size: 13px; padding: 8px 6px 2px; }
-svg text { font-family: var(--font); }
-.lbl { fill: var(--muted); font-size: 12.5px; }
-.val { fill: var(--ink); font-weight: 800; }
-#walls { fill: var(--floor); stroke: var(--wall); stroke-width: 5; }
-#room.alarm #walls { animation: flash 0.6s steps(2, jump-none) infinite; }
-@keyframes pulse { 50% { filter: brightness(1.15); } }
-@keyframes flash { 50% { stroke: var(--alert); } }
-#glow { opacity: 0; transition: opacity .4s; }
-#room.lamp-on #glow { opacity: 1; }
-#bulb { fill: var(--line); stroke: var(--wall); stroke-width: 2; transition: fill .3s; }
-#room.lamp-on #bulb { fill: var(--lamp); }
-#blades { transform-origin: 130px 300px; transform-box: view-box; }
-#blades path { fill: var(--muted); }
-#room.fan-on #blades { animation: spin 0.9s linear infinite; }
-#room.fan-on #blades path { fill: var(--teal); }
-@keyframes spin { to { transform: rotate(360deg); } }
-#cone { fill: var(--muted); opacity: .12; transition: opacity .2s, fill .2s; }
-#room.motion #cone { fill: var(--alert); opacity: .32; }
-#siren { fill: var(--line); stroke: var(--wall); stroke-width: 2; }
-#room.armed #siren { fill: var(--alert); }
-#sky { transition: fill .6s; }
-@media (prefers-reduced-motion: reduce) {
-  #room.fan-on #blades, #room.alarm #walls { animation: none; }
-}
-
-/* Readings */
-.readings { display: flex; flex-direction: column; }
-.temp { margin-top: 6px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
-.temp .big { font-size: 72px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
-.temp .big sup { font-size: 24px; font-weight: 600; letter-spacing: 0; vertical-align: 28px; margin-left: 4px; color: var(--muted); }
-.temp .state { margin-top: 8px; font-size: 14px; color: var(--muted); }
-dl.list { margin: 0; }
-dl.list div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
-dl.list div:last-child { border-bottom: 0; }
-dl.list dt { color: var(--muted); }
-dl.list dd { margin: 0; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-dl.list dd small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 3px; }
-dd.motion-yes { color: var(--alert); }
-.stamp { color: var(--muted); font-size: 12.5px; margin-top: auto; padding-top: 10px; }
-
-/* Controls */
-.controls { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 0; }
-.ctl { padding: 18px 22px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
-.ctl:last-child { border-right: 0; }
-.ctl .name { font-weight: 700; }
-.ctl .sub { color: var(--muted); font-size: 13px; min-height: 20px; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; align-self: flex-start; }
-.seg button { border: 0; background: transparent; padding: 9px 16px; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
-.seg button:disabled { opacity: .5; cursor: not-allowed; }
-.seg { background: var(--floor); padding: 3px; border-radius: 12px; gap: 2px; }
-.seg button { border-radius: 9px; color: var(--muted); }
-.seg button[aria-pressed="true"] { background: linear-gradient(135deg, #1D5FD8, #3B82F6); color: #fff; box-shadow: 0 4px 10px -3px rgba(29,95,216,.55); }
-.switch {
-  align-self: flex-start; display: inline-flex; align-items: center; gap: 10px;
-  border: 0; background: transparent; padding: 0; cursor: pointer; font-weight: 600;
-}
-.switch .track { width: 52px; height: 30px; border-radius: 999px; background: var(--line); position: relative; transition: background .2s; flex: none; }
-.switch .track::after {
-  content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
-  background: var(--panel); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s;
-}
-.switch[aria-checked="true"] .track { background: var(--teal); }
-.switch[aria-checked="true"] .track::after { transform: translateX(22px); }
-.switch:disabled { cursor: not-allowed; opacity: .6; }
-.btn {
-  align-self: flex-start; border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 700; cursor: pointer;
-  background: linear-gradient(135deg, #1D5FD8, #3B82F6); color: #fff; box-shadow: 0 6px 14px -6px rgba(29,95,216,.6); transition: transform .1s, opacity .15s;
-}
-.btn:hover:not(:disabled) { opacity: .88; }
-.btn:active:not(:disabled) { transform: scale(.97); }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn.danger { background: var(--danger); box-shadow: 0 6px 14px -6px rgba(201,42,42,.6); color: #fff; }
-
-/* Chart + alerts */
-.chart-box { position: relative; height: 240px; }
-.alerts { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
-.alerts li { padding: 10px 0; border-bottom: 1px solid var(--line); }
-.alerts li:last-child { border-bottom: 0; }
-.alerts time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-.alerts .msg { font-weight: 600; color: var(--alert); }
-.empty { color: var(--muted); font-size: 14px; }
-
-/* Traffic log */
-.log-panel { grid-column: 1 / -1; }
-.log-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.log-head .hint { margin-bottom: 10px; }
-.log-scroll { overflow-x: auto; max-height: 300px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
-table.log { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
-table.log th { text-align: left; font-weight: 600; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
-table.log td { padding: 7px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-table.log tr:last-child td { border-bottom: 0; }
-table.log td.t { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-table.log td.dir { white-space: nowrap; }
-table.log td.topic, table.log td.payload { font-family: var(--mono); font-size: 12.5px; }
-table.log td.topic { white-space: nowrap; }
-table.log td.payload { word-break: break-all; }
-.tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-.tag.up { background: var(--teal-soft); color: var(--teal); }
-.tag.down { background: var(--alert-soft); color: var(--alert); }
-
-/* Settings dialog */
-dialog { border: 1px solid var(--line); border-radius: 14px; padding: 22px; background: var(--panel); color: var(--ink); width: min(520px, calc(100% - 32px)); }
-dialog::backdrop { background: rgba(10, 18, 26, .5); }
-dialog h2 { margin: 0 0 14px; font-size: 18px; }
-dialog label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 12px; }
-dialog input { display: block; width: 100%; margin-top: 6px; padding: 9px 11px; font: inherit; font-family: var(--mono); font-size: 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
-dialog p { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
-dialog .row { display: flex; gap: 10px; justify-content: flex-end; }
-
-@media (max-width: 900px) {
-  .grid { grid-template-columns: minmax(0, 1fr); }
-  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ctl:nth-child(2) { border-right: 0; }
-  .ctl:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
-}
-@media (max-width: 520px) {
-  .wrap { padding: 14px 12px 32px; }
-  .controls { grid-template-columns: minmax(0, 1fr); }
-  .ctl { border-right: 0; border-bottom: 1px solid var(--line); }
-  .ctl:last-child { border-bottom: 0; }
-  .temp .big { font-size: 52px; }
-}
-</style>
-</head>
-<body>
-<div class="wrap">
-
-  <header class="top">
-    <h1><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg></span>SmartRoom 01<small>Monitoring dan kontrol ruangan berbasis ESP32 dan MQTT</small></h1>
-    <div class="conn">
-      <span class="pill" title="Koneksi dashboard ke broker MQTT"><span class="dot wait" id="dotBroker"></span><span id="txtBroker">Menghubungkan ke broker</span></span>
-      <span class="pill" title="Status ESP32 (dari topik online)"><span class="dot" id="dotDevice"></span><span id="txtDevice">Menunggu ESP32</span></span>
-      <button class="ghost" id="btnSettings" type="button">Pengaturan koneksi</button>
-    </div>
-  </header>
-
-  <div class="banner" id="banner" role="alert">
-    <strong>Gerakan terdeteksi, alarm berbunyi</strong>
-    <span>Sensor PIR menangkap gerakan saat alarm aktif.</span>
-    <button type="button" id="btnBannerOff">Matikan alarm</button>
-  </div>
-
-  <main class="grid">
-
-    <figure class="panel room-panel" style="margin:0">
-      <svg id="room" viewBox="0 0 640 420" role="img" aria-labelledby="roomTitle">
-        <title id="roomTitle">Denah ruangan dengan posisi sensor dan aktuator</title>
-        <defs>
-          <radialGradient id="lampGrad">
-            <stop offset="0" stop-color="var(--lamp)" stop-opacity=".55"/>
-            <stop offset="1" stop-color="var(--lamp)" stop-opacity="0"/>
-          </radialGradient>
-          <clipPath id="roomClip"><rect x="22" y="22" width="596" height="366" rx="4"/></clipPath>
-        </defs>
-
-        <rect id="walls" x="20" y="20" width="600" height="370" rx="6"/>
-
-        <g clip-path="url(#roomClip)">
-          <circle id="glow" cx="320" cy="200" r="150" fill="url(#lampGrad)"/>
-          <path id="cone" d="M600 372 L360 196 Q430 140 470 120 Z"/>
-        </g>
-
-        <!-- Jendela + LDR -->
-        <rect id="sky" x="390" y="11" width="160" height="18" rx="3" fill="var(--sky-day)" stroke="var(--wall)" stroke-width="2"/>
-        <circle cx="470" cy="56" r="9" fill="var(--panel)" stroke="var(--wall)" stroke-width="2"/>
-        <path d="M465 56 h10 M470 51 v10" stroke="var(--wall)" stroke-width="1.6"/>
-        <text class="lbl" x="486" y="52">LDR | GPIO34</text>
-        <text class="val" x="486" y="72" font-size="16" id="svgLux">-- lux</text>
-
-        <!-- DHT22 -->
-        <rect x="44" y="46" width="26" height="36" rx="4" fill="var(--panel)" stroke="var(--wall)" stroke-width="2"/>
-        <path d="M50 56 h14 M50 63 h14 M50 70 h14" stroke="var(--muted)" stroke-width="1.6"/>
-        <text class="lbl" x="82" y="58">DHT22 | GPIO15</text>
-        <text class="val" x="82" y="80" font-size="18" id="svgClimate">-- °C  -- %</text>
-
-        <!-- Lampu -->
-        <circle id="bulb" cx="320" cy="200" r="20"/>
-        <text class="lbl" x="320" y="244" text-anchor="middle">Lampu (LED kuning) | GPIO25</text>
-
-        <!-- Kipas -->
-        <circle cx="130" cy="300" r="40" fill="none" stroke="var(--line)" stroke-width="2"/>
-        <g id="blades">
-          <path d="M130 300 C 122 280, 124 266, 130 262 C 136 266, 138 280, 130 300 Z"/>
-          <path d="M130 300 C 122 280, 124 266, 130 262 C 136 266, 138 280, 130 300 Z" transform="rotate(120 130 300)"/>
-          <path d="M130 300 C 122 280, 124 266, 130 262 C 136 266, 138 280, 130 300 Z" transform="rotate(240 130 300)"/>
-        </g>
-        <circle cx="130" cy="300" r="6" fill="var(--wall)"/>
-        <text class="lbl" x="184" y="296">Kipas (relay)</text>
-        <text class="lbl" x="184" y="314">GPIO26</text>
-
-        <!-- Alarm -->
-        <path id="siren" d="M584 168 h18 v26 h-18 l-12 10 v-46 z"/>
-        <text class="lbl" x="566" y="226" text-anchor="end">Buzzer GPIO13</text>
-        <text class="lbl" x="566" y="244" text-anchor="end">LED merah GPIO14</text>
-
-        <!-- PIR -->
-        <circle cx="600" cy="372" r="10" fill="var(--panel)" stroke="var(--wall)" stroke-width="2"/>
-        <text class="lbl" x="582" y="360" text-anchor="end">PIR | GPIO27</text>
-
-        <!-- Pintu -->
-        <rect x="260" y="386" width="80" height="9" fill="var(--bg)"/>
-        <path d="M260 390 A 80 80 0 0 1 340 310" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="4 4"/>
-        <line x1="260" y1="390" x2="260" y2="310" stroke="var(--wall)" stroke-width="3"/>
-      </svg>
-      <figcaption id="roomCaption">Denah menunjukkan keadaan perangkat secara langsung: lampu menyala, kipas berputar, area PIR memerah saat ada gerakan.</figcaption>
-    </figure>
-
-    <section class="panel readings" aria-labelledby="hReadings">
-      <h2 id="hReadings">Kondisi ruangan</h2>
-      <div class="temp">
-        <div class="big"><span id="vTemp">--</span><sup>°C</sup></div>
-        <div class="state" id="tempState">Menunggu data dari ESP32</div>
-      </div>
-      <dl class="list">
-        <div><dt>Kelembapan</dt><dd><span id="vHum">--</span><small>%</small></dd></div>
-        <div><dt>Intensitas cahaya</dt><dd><span id="vLux">--</span><small>lux</small></dd></div>
-        <div><dt>Gerakan</dt><dd id="vMotion">--</dd></div>
-      </dl>
-      <div class="stamp" id="stamp">Belum ada data</div>
-    </section>
-
-    <section class="panel controls" aria-label="Kontrol perangkat">
-      <div class="ctl">
-        <span class="name">Mode</span>
-        <div class="seg" role="group" aria-label="Mode kontrol">
-          <button type="button" id="mAuto" aria-pressed="false">Otomatis</button>
-          <button type="button" id="mManual" aria-pressed="false">Manual</button>
-        </div>
-        <span class="sub" id="modeSub">Otomatis: lampu dan kipas diatur sensor</span>
-      </div>
-      <div class="ctl">
-        <span class="name">Lampu</span>
-        <button type="button" class="switch" id="swLampu" role="switch" aria-checked="false" disabled>
-          <span class="track"></span><span class="lab" id="labLampu">Mati</span>
-        </button>
-        <span class="sub" id="subLampu">Nyala otomatis jika cahaya &lt; 100 lux</span>
-      </div>
-      <div class="ctl">
-        <span class="name">Kipas</span>
-        <button type="button" class="switch" id="swKipas" role="switch" aria-checked="false" disabled>
-          <span class="track"></span><span class="lab" id="labKipas">Mati</span>
-        </button>
-        <span class="sub" id="subKipas">Nyala ≥ 30 °C, mati ≤ 28 °C</span>
-      </div>
-      <div class="ctl">
-        <span class="name">Alarm gerakan</span>
-        <button type="button" class="btn" id="btnAlarm">Aktifkan alarm</button>
-        <span class="sub" id="subAlarm">Status belum diketahui</span>
-      </div>
-    </section>
-
-    <section class="panel" aria-labelledby="hChart">
-      <h2 id="hChart">Suhu dan kelembapan</h2>
-      <p class="hint">Dua menit terakhir, diperbarui setiap 2 detik.</p>
-      <div class="chart-box"><canvas id="chart" aria-label="Grafik suhu dan kelembapan"></canvas></div>
-    </section>
-
-    <section class="panel" aria-labelledby="hAlerts">
-      <h2 id="hAlerts">Peringatan</h2>
-      <p class="hint">Dikirim ESP32 saat PIR mendeteksi gerakan ketika alarm aktif.</p>
-      <ul class="alerts" id="alerts"></ul>
-      <p class="empty" id="alertsEmpty">Belum ada peringatan.</p>
-    </section>
-
-    <section class="panel log-panel" aria-labelledby="hLog">
-      <div class="log-head">
-        <h2 id="hLog">Lalu lintas MQTT</h2>
-        <p class="hint">Semua pesan di topik <code id="baseCode"></code>. Isinya masih teks biasa, jadi siapa pun yang subscribe ke topik yang sama bisa membacanya.</p>
-      </div>
-      <div class="log-scroll">
-        <table class="log">
-          <thead><tr><th>Waktu</th><th>Arah</th><th>Topik</th><th>Payload</th></tr></thead>
-          <tbody id="logBody"></tbody>
-        </table>
-      </div>
-    </section>
-
-  </main>
-</div>
-
-<dialog id="dlg">
-  <form method="dialog" id="cfgForm">
-    <h2>Pengaturan koneksi</h2>
-    <label>Alamat broker (WebSocket)
-      <input id="inUrl" type="url" required spellcheck="false">
-    </label>
-    <label>Topik dasar
-      <input id="inBase" type="text" required spellcheck="false">
-    </label>
-    <p>Topik dasar harus sama dengan <code>TOPIK_DASAR</code> di sketch ESP32. Cadangan jika HiveMQ bermasalah: <code>wss://broker.emqx.io:8084/mqtt</code> (ubah juga <code>MQTT_HOST</code> di sketch menjadi <code>broker.emqx.io</code>).</p>
-    <div class="row">
-      <button class="ghost" type="button" id="btnReset">Kembalikan bawaan</button>
-      <button class="ghost" value="cancel" formnovalidate>Batal</button>
-      <button class="btn" value="save" id="btnSave">Simpan dan sambungkan</button>
-    </div>
-  </form>
-</dialog>
-
-<script>
-(function () {
-  "use strict";
-  const DEFAULTS = { url: "wss://broker.hivemq.com:8884/mqtt", base: "filkom-iot/smartroom01" };
-  const MAX_POINTS = 60, MAX_LOG = 80;
-  const $ = (id) => document.getElementById(id);
-  const decoder = new TextDecoder();
-
-  function loadCfg() {
-    try {
-      const raw = localStorage.getItem("smartroom-cfg");
-      if (raw) {
-        const c = JSON.parse(raw);
-        if (c && typeof c.url === "string" && typeof c.base === "string") return c;
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>SmartRoom 01 | Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/mqtt@5.15.1/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --ink: #0f2547;
+        --muted: #5b6f8c;
+        --line: #dce6f4;
+        --floor: #f4f8fe;
+        --wall: #1e3f7a;
+        --teal: #1d5fd8;
+        --teal-soft: #dee9fc;
+        --alert: #c92a2a;
+        --alert-soft: #fbe4e4;
+        --danger: #c92a2a;
+        --lamp: #f2b200;
+        --hum: #0ea5c6;
+        --sky-day: #9ad4f7;
+        --sky-night: #1a2944;
+        --font: "Archivo", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
       }
-    } catch (e) { /* storage tidak tersedia */ }
-    return { ...DEFAULTS };
-  }
-  function saveCfg(c) { try { localStorage.setItem("smartroom-cfg", JSON.stringify(c)); } catch (e) {} }
+      :root {
+        box-sizing: border-box;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: inherit;
+      }
+      html {
+        scroll-padding-top: env(safe-area-inset-top, 0px);
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(900px 420px at 85% -80px, color-mix(in srgb, var(--teal) 16%, transparent), transparent 70%), radial-gradient(700px 360px at -5% -60px, color-mix(in srgb, var(--hum) 12%, transparent), transparent 70%), var(--bg);
+        background-attachment: fixed;
+        font-family: var(--font);
+        font-size: 15px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+      }
+      :focus-visible {
+        outline: 3px solid var(--teal);
+        outline-offset: 2px;
+      }
 
-  let cfg = loadCfg();
-  let client = null;
-  let lastTele = 0;
-  const st = { mode: null, lampu: 0, kipas: 0, alarm_aktif: 0, alarm_berbunyi: 0, online: null };
+      .wrap {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 20px 20px 40px;
+      }
 
-  /* ---------------- Status koneksi ---------------- */
-  function setBroker(kind, detail) {
-    const dot = $("dotBroker"), txt = $("txtBroker");
-    dot.className = "dot " + (kind === "ok" ? "ok" : kind === "wait" ? "wait" : "bad");
-    txt.textContent = kind === "ok" ? "Broker terhubung"
-      : kind === "wait" ? "Menghubungkan ke broker"
-      : (detail || "Broker terputus, mencoba lagi");
-    updateControls();
-    setDevice();
-  }
-  function setDevice() {
-    const dot = $("dotDevice"), txt = $("txtDevice");
-    const stale = lastTele && (Date.now() - lastTele > 10000);
-    if (!(client && client.connected)) { dot.className = "dot"; txt.textContent = "Status ESP32 tidak diketahui"; }
-    else if (st.online === false) { dot.className = "dot bad"; txt.textContent = "ESP32 offline"; }
-    else if (st.online === true && !stale) { dot.className = "dot ok"; txt.textContent = "ESP32 online"; }
-    else if (stale) { dot.className = "dot wait"; txt.textContent = "Data ESP32 terhenti"; }
-    else { dot.className = "dot"; txt.textContent = "Menunggu ESP32"; }
-  }
+      /* ---------- Header ---------- */
+      header.top {
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px 24px;
+        margin-bottom: 18px;
+      }
+      header.top h1 {
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin: 0;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        column-gap: 14px;
+        align-items: center;
+      }
+      header.top h1 .logo {
+        grid-row: span 2;
+        width: 46px;
+        height: 46px;
+        border-radius: 13px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        background: linear-gradient(135deg, #1d5fd8, #4da3ff);
+        box-shadow: 0 8px 20px -4px color-mix(in srgb, #1d5fd8 55%, transparent);
+      }
+      header.top h1 .logo svg {
+        width: 26px;
+        height: 26px;
+      }
+      header.top h1 small {
+        display: block;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--muted);
+        letter-spacing: 0;
+      }
+      .conn {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-left: auto;
+        align-items: center;
+      }
+      .pill {
+        box-shadow: 0 1px 2px rgba(19, 34, 48, 0.06);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--panel);
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex: none;
+      }
+      .dot.ok {
+        background: var(--teal);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--teal) 22%, transparent);
+      }
+      .dot.wait {
+        background: var(--lamp);
+      }
+      .dot.bad {
+        background: var(--alert);
+      }
+      .ghost {
+        border: 1px solid var(--line);
+        background: transparent;
+        border-radius: 999px;
+        padding: 6px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .ghost:hover {
+        background: var(--panel);
+      }
+      .panel:has(.alerts) .empty {
+        padding: 12px 0;
+      }
 
-  /* ---------------- Grafik ---------------- */
-  let chart = null;
-  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-  function initChart() {
-    if (typeof Chart === "undefined") {
-      $("chart").replaceWith(Object.assign(document.createElement("p"), { className: "empty", textContent: "Grafik tidak bisa dimuat (library Chart.js gagal diunduh)." }));
-      return;
-    }
-    Chart.defaults.font.family = cssVar("--font");
-    chart = new Chart($("chart"), {
-      type: "line",
-      data: { labels: [], datasets: [
-        { label: "Suhu (°C)", data: [], yAxisID: "y", borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
-        { label: "Kelembapan (%)", data: [], yAxisID: "y1", borderWidth: 2, pointRadius: 0, tension: 0.3, borderDash: [5, 4] }
-      ] },
-      options: {
-        animation: false, responsive: true, maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: { legend: { labels: { boxWidth: 14, boxHeight: 2 } } },
-        scales: {
-          x: { ticks: { maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false } },
-          y: { position: "left", title: { display: true, text: "°C" } },
-          y1: { position: "right", title: { display: true, text: "%" }, grid: { drawOnChartArea: false } }
+      /* ---------- Alarm banner ---------- */
+      .banner {
+        box-shadow: 0 10px 28px -10px rgba(201, 42, 42, 0.6);
+        animation: pulse 1.2s ease-in-out infinite;
+        display: none;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        background: var(--danger);
+        color: #fff;
+        border-radius: 12px;
+        padding: 14px 18px;
+        margin-bottom: 18px;
+      }
+      .banner.show {
+        display: flex;
+      }
+      .banner strong {
+        font-size: 18px;
+      }
+      .banner span {
+        opacity: 0.9;
+      }
+      .banner button {
+        margin-left: auto;
+        background: #fff;
+        color: #9b1c1c;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 18px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      /* ---------- Main grid ---------- */
+      .grid {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 20px 22px;
+        box-shadow:
+          0 1px 2px rgba(15, 37, 71, 0.04),
+          0 14px 32px -16px rgba(29, 95, 216, 0.28);
+      }
+      .panel h2 {
+        color: var(--teal) !important;
+        font-size: 12px;
+        font-weight: 700;
+        margin: 0 0 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+      }
+      .panel .hint {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 14px;
+      }
+
+      /* Room plan */
+      .room-panel {
+        padding: 14px;
+      }
+      .room-panel svg {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .room-panel figcaption {
+        color: var(--muted);
+        font-size: 13px;
+        padding: 8px 6px 2px;
+      }
+      svg text {
+        font-family: var(--font);
+      }
+      .lbl {
+        fill: var(--muted);
+        font-size: 12.5px;
+      }
+      .val {
+        fill: var(--ink);
+        font-weight: 800;
+      }
+      #walls {
+        fill: var(--floor);
+        stroke: var(--wall);
+        stroke-width: 5;
+      }
+      #room.alarm #walls {
+        animation: flash 0.6s steps(2, jump-none) infinite;
+      }
+      @keyframes pulse {
+        50% {
+          filter: brightness(1.15);
         }
       }
-    });
-    paintChart();
-  }
-  function paintChart() {
-    if (!chart) return;
-    const ink = cssVar("--muted"), line = cssVar("--line");
-    chart.data.datasets[0].borderColor = cssVar("--alert");
-    chart.data.datasets[1].borderColor = cssVar("--hum");
-    chart.options.color = ink;
-    for (const k of ["x", "y", "y1"]) {
-      chart.options.scales[k].ticks.color = ink;
-      chart.options.scales[k].grid.color = line;
-      if (chart.options.scales[k].title) chart.options.scales[k].title.color = ink;
-    }
-    chart.update();
-  }
-  function pushChart(t, h) {
-    if (!chart) return;
-    const now = new Date();
-    chart.data.labels.push(now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-    chart.data.datasets[0].data.push(t);
-    chart.data.datasets[1].data.push(h);
-    if (chart.data.labels.length > MAX_POINTS) {
-      chart.data.labels.shift();
-      chart.data.datasets.forEach((d) => d.data.shift());
-    }
-    chart.update();
-  }
-
-  /* ---------------- Tampilan data ---------------- */
-  const num = (v) => (typeof v === "number" && Number.isFinite(v)) ? v : null;
-  function fmt(v, d) { return v === null ? "--" : v.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d }); }
-
-  function onTelemetry(d) {
-    const t = num(d.suhu), h = num(d.kelembapan), lux = num(d.cahaya);
-    const motion = d.gerakan === 1 || d.gerakan === true;
-    lastTele = Date.now();
-
-    $("vTemp").textContent = fmt(t, 1);
-    $("vHum").textContent = fmt(h, 1);
-    $("vLux").textContent = fmt(lux, 0);
-    const vm = $("vMotion");
-    vm.textContent = motion ? "Terdeteksi" : "Tidak ada";
-    vm.className = motion ? "motion-yes" : "";
-    $("tempState").textContent = t === null ? "Data suhu tidak valid"
-      : t >= 30 ? "Panas: di atas ambang kipas (30 °C)"
-      : t <= 28 ? "Nyaman: di bawah ambang kipas"
-      : "Di antara ambang 28 dan 30 °C (histeresis)";
-
-    $("svgClimate").textContent = fmt(t, 1) + " °C  " + fmt(h, 0) + " %";
-    $("svgLux").textContent = fmt(lux, 0) + " lux";
-    $("room").classList.toggle("motion", motion);
-
-    // Warna jendela mengikuti cahaya: gelap -> malam, terang -> siang
-    if (lux !== null) {
-      const k = Math.max(0, Math.min(1, Math.log10(Math.max(lux, 1)) / 3.5));
-      $("sky").style.fill = `color-mix(in srgb, var(--sky-day) ${Math.round(k * 100)}%, var(--sky-night))`;
-    }
-    if (t !== null && h !== null) pushChart(t, h);
-    setDevice();
-  }
-
-  function onStatus(d) {
-    st.mode = d.mode === "MANUAL" ? "MANUAL" : d.mode === "AUTO" ? "AUTO" : null;
-    st.lampu = d.lampu ? 1 : 0;
-    st.kipas = d.kipas ? 1 : 0;
-    st.alarm_aktif = d.alarm_aktif ? 1 : 0;
-    st.alarm_berbunyi = d.alarm_berbunyi ? 1 : 0;
-
-    const room = $("room");
-    room.classList.toggle("lamp-on", !!st.lampu);
-    room.classList.toggle("fan-on", !!st.kipas);
-    room.classList.toggle("armed", !!st.alarm_aktif);
-    room.classList.toggle("alarm", !!st.alarm_berbunyi);
-    $("banner").classList.toggle("show", !!st.alarm_berbunyi);
-    updateControls();
-  }
-
-  function updateControls() {
-    const connected = !!(client && client.connected);
-    const manual = st.mode === "MANUAL";
-    $("mAuto").setAttribute("aria-pressed", String(st.mode === "AUTO"));
-    $("mManual").setAttribute("aria-pressed", String(manual));
-    $("mAuto").disabled = $("mManual").disabled = !connected;
-    $("modeSub").textContent = st.mode === null ? "Status belum diketahui"
-      : manual ? "Manual: lampu dan kipas diatur dari sini"
-      : "Otomatis: lampu dan kipas diatur sensor";
-
-    for (const [key, sw, lab, sub, autoText] of [
-      ["lampu", "swLampu", "labLampu", "subLampu", "Nyala otomatis jika cahaya < 100 lux"],
-      ["kipas", "swKipas", "labKipas", "subKipas", "Nyala ≥ 30 °C, mati ≤ 28 °C"]
-    ]) {
-      const on = !!st[key];
-      $(sw).setAttribute("aria-checked", String(on));
-      $(sw).disabled = !connected || !manual;
-      $(lab).textContent = on ? "Nyala" : "Mati";
-      $(sub).textContent = manual ? "Ketuk untuk menyalakan atau mematikan" : autoText;
-    }
-
-    const btn = $("btnAlarm");
-    btn.disabled = !connected;
-    btn.textContent = st.alarm_aktif ? "Matikan alarm" : "Aktifkan alarm";
-    btn.className = st.alarm_aktif ? "btn danger" : "btn";
-    $("subAlarm").textContent = st.alarm_berbunyi ? "Sedang berbunyi"
-      : st.alarm_aktif ? "Aktif: gerakan akan memicu buzzer"
-      : "Nonaktif: gerakan hanya dicatat";
-  }
-
-  function addAlert(d) {
-    $("alertsEmpty").hidden = true;
-    const li = document.createElement("li");
-    const time = document.createElement("time");
-    time.textContent = new Date().toLocaleTimeString("id-ID");
-    const msg = document.createElement("div");
-    msg.className = "msg";
-    msg.textContent = typeof d.pesan === "string" ? d.pesan : "Peringatan dari ESP32";
-    li.append(time, msg);
-    $("alerts").prepend(li);
-    while ($("alerts").children.length > 30) $("alerts").lastElementChild.remove();
-  }
-
-  function logTraffic(sub, text) {
-    const tr = document.createElement("tr");
-    const toDevice = sub.startsWith("perintah/");
-    const cells = [
-      new Date().toLocaleTimeString("id-ID"),
-      null,
-      cfg.base + "/" + sub,
-      text === "" ? "(kosong)" : text
-    ];
-    const cls = ["t", "dir", "topic", "payload"];
-    cells.forEach((c, i) => {
-      const td = document.createElement("td");
-      td.className = cls[i];
-      if (i === 1) {
-        const tag = document.createElement("span");
-        tag.className = "tag " + (toDevice ? "down" : "up");
-        tag.textContent = toDevice ? "Dashboard → ESP32" : "ESP32 → Dashboard";
-        td.append(tag);
-      } else {
-        td.textContent = c;   // textContent: payload dari broker publik tidak dieksekusi sebagai HTML
+      @keyframes flash {
+        50% {
+          stroke: var(--alert);
+        }
       }
-      tr.append(td);
-    });
-    const body = $("logBody");
-    body.prepend(tr);
-    while (body.children.length > MAX_LOG) body.lastElementChild.remove();
-  }
+      #glow {
+        opacity: 0;
+        transition: opacity 0.4s;
+      }
+      #room.lamp-on #glow {
+        opacity: 1;
+      }
+      #bulb {
+        fill: var(--line);
+        stroke: var(--wall);
+        stroke-width: 2;
+        transition: fill 0.3s;
+      }
+      #room.lamp-on #bulb {
+        fill: var(--lamp);
+      }
+      #blades {
+        transform-origin: 130px 300px;
+        transform-box: view-box;
+      }
+      #blades path {
+        fill: var(--muted);
+      }
+      #room.fan-on #blades {
+        animation: spin 0.9s linear infinite;
+      }
+      #room.fan-on #blades path {
+        fill: var(--teal);
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #cone {
+        fill: var(--muted);
+        opacity: 0.12;
+        transition:
+          opacity 0.2s,
+          fill 0.2s;
+      }
+      #room.motion #cone {
+        fill: var(--alert);
+        opacity: 0.32;
+      }
+      #siren {
+        fill: var(--line);
+        stroke: var(--wall);
+        stroke-width: 2;
+      }
+      #room.armed #siren {
+        fill: var(--alert);
+      }
+      #sky {
+        transition: fill 0.6s;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #room.fan-on #blades,
+        #room.alarm #walls {
+          animation: none;
+        }
+      }
 
-  /* ---------------- MQTT ---------------- */
-  function onMessage(topic, payload) {
-    if (!topic.startsWith(cfg.base + "/")) return;
-    const sub = topic.slice(cfg.base.length + 1);
-    const text = decoder.decode(payload);
-    logTraffic(sub, text);
-    if (sub === "online") { st.online = text === "1"; setDevice(); return; }
-    if (sub.startsWith("perintah/") || text === "") return;
-    let d;
-    try { d = JSON.parse(text); } catch (e) { return; }
-    if (!d || typeof d !== "object") return;
-    if (sub === "telemetri") onTelemetry(d);
-    else if (sub === "status") onStatus(d);
-    else if (sub === "peringatan") addAlert(d);
-  }
+      /* Readings */
+      .readings {
+        display: flex;
+        flex-direction: column;
+      }
+      .temp {
+        margin-top: 6px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      .temp .big {
+        font-size: 72px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+      .temp .big sup {
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: 0;
+        vertical-align: 28px;
+        margin-left: 4px;
+        color: var(--muted);
+      }
+      .temp .state {
+        margin-top: 8px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      dl.list {
+        margin: 0;
+      }
+      dl.list div {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      dl.list div:last-child {
+        border-bottom: 0;
+      }
+      dl.list dt {
+        color: var(--muted);
+      }
+      dl.list dd {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+      dl.list dd small {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--muted);
+        margin-left: 3px;
+      }
+      dd.motion-yes {
+        color: var(--alert);
+      }
+      .stamp {
+        color: var(--muted);
+        font-size: 12.5px;
+        margin-top: auto;
+        padding-top: 10px;
+      }
 
-  function connect() {
-    if (typeof mqtt === "undefined") {
-      setBroker("bad", "Library MQTT gagal dimuat, periksa internet");
-      return;
-    }
-    if (client) { const old = client; client = null; old.end(true); }
-    st.online = null; st.mode = null; lastTele = 0;
-    $("stamp").textContent = "Belum ada data";
-    $("baseCode").textContent = cfg.base + "/#";
-    setBroker("wait");
-    const clientId = "dashboard-" + Math.random().toString(16).slice(2, 8);
-    const c = mqtt.connect(cfg.url, { clientId, clean: true, connectTimeout: 8000, reconnectPeriod: 3000 });
-    client = c;
-    c.on("connect", () => { if (c !== client) return; setBroker("ok"); c.subscribe(cfg.base + "/#", { qos: 0 }); });
-    c.on("reconnect", () => { if (c === client) setBroker("wait"); });
-    c.on("offline", () => { if (c === client) setBroker("bad"); });
-    c.on("close", () => { if (c === client && !c.connected) setBroker("bad"); });
-    c.on("error", (e) => { if (c === client) setBroker("bad", "Gagal: " + (e && e.message ? e.message : "koneksi ditolak")); });
-    c.on("message", (topic, payload) => { if (c === client) onMessage(topic, payload); });
-  }
+      /* Controls */
+      .controls {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0;
+        padding: 0;
+      }
+      .ctl {
+        padding: 18px 22px;
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .ctl:last-child {
+        border-right: 0;
+      }
+      .ctl .name {
+        font-weight: 700;
+      }
+      .ctl .sub {
+        color: var(--muted);
+        font-size: 13px;
+        min-height: 20px;
+      }
+      .seg {
+        display: inline-flex;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+        align-self: flex-start;
+      }
+      .seg button {
+        border: 0;
+        background: transparent;
+        padding: 9px 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .seg button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .seg {
+        background: var(--floor);
+        padding: 3px;
+        border-radius: 12px;
+        gap: 2px;
+      }
+      .seg button {
+        border-radius: 9px;
+        color: var(--muted);
+      }
+      .seg button[aria-pressed="true"] {
+        background: linear-gradient(135deg, #1d5fd8, #3b82f6);
+        color: #fff;
+        box-shadow: 0 4px 10px -3px rgba(29, 95, 216, 0.55);
+      }
+      .switch {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        border: 0;
+        background: transparent;
+        padding: 0;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .switch .track {
+        width: 52px;
+        height: 30px;
+        border-radius: 999px;
+        background: var(--line);
+        position: relative;
+        transition: background 0.2s;
+        flex: none;
+      }
+      .switch .track::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--panel);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        transition: transform 0.2s;
+      }
+      .switch[aria-checked="true"] .track {
+        background: var(--teal);
+      }
+      .switch[aria-checked="true"] .track::after {
+        transform: translateX(22px);
+      }
+      .switch:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+      .btn {
+        align-self: flex-start;
+        border: 0;
+        border-radius: 10px;
+        padding: 9px 16px;
+        font-weight: 700;
+        cursor: pointer;
+        background: linear-gradient(135deg, #1d5fd8, #3b82f6);
+        color: #fff;
+        box-shadow: 0 6px 14px -6px rgba(29, 95, 216, 0.6);
+        transition:
+          transform 0.1s,
+          opacity 0.15s;
+      }
+      .btn:hover:not(:disabled) {
+        opacity: 0.88;
+      }
+      .btn:active:not(:disabled) {
+        transform: scale(0.97);
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn.danger {
+        background: var(--danger);
+        box-shadow: 0 6px 14px -6px rgba(201, 42, 42, 0.6);
+        color: #fff;
+      }
 
-  function send(cmd, value) {
-    if (!client || !client.connected) return;
-    client.publish(cfg.base + "/perintah/" + cmd, value, { qos: 0, retain: false });
-  }
+      /* Chart + alerts */
+      .chart-box {
+        position: relative;
+        height: 240px;
+      }
+      .alerts {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: 260px;
+        overflow-y: auto;
+      }
+      .alerts li {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .alerts li:last-child {
+        border-bottom: 0;
+      }
+      .alerts time {
+        color: var(--muted);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+      .alerts .msg {
+        font-weight: 600;
+        color: var(--alert);
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 14px;
+      }
 
-  /* ---------------- Event tombol ---------------- */
-  // Tampilan langsung diperbarui saat diklik; status dari ESP32 akan menimpanya jika berbeda.
-  function act(cmd, value, key, v) {
-    if (!client || !client.connected) return;
-    send(cmd, value);
-    st[key] = v;
-    updateControls();
-  }
-  $("mAuto").addEventListener("click", () => act("mode", "AUTO", "mode", "AUTO"));
-  $("mManual").addEventListener("click", () => act("mode", "MANUAL", "mode", "MANUAL"));
-  $("swLampu").addEventListener("click", () => act("lampu", st.lampu ? "OFF" : "ON", "lampu", st.lampu ? 0 : 1));
-  $("swKipas").addEventListener("click", () => act("kipas", st.kipas ? "OFF" : "ON", "kipas", st.kipas ? 0 : 1));
-  $("btnAlarm").addEventListener("click", () => act("alarm", st.alarm_aktif ? "DISARM" : "ARM", "alarm_aktif", st.alarm_aktif ? 0 : 1));
-  $("btnBannerOff").addEventListener("click", () => send("alarm", "DISARM"));
+      /* Traffic log */
+      .log-panel {
+        grid-column: 1 / -1;
+      }
+      .log-head {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .log-head .hint {
+        margin-bottom: 10px;
+      }
+      .log-scroll {
+        overflow-x: auto;
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      table.log {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        min-width: 640px;
+      }
+      table.log th {
+        text-align: left;
+        font-weight: 600;
+        color: var(--muted);
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        position: sticky;
+        top: 0;
+        background: var(--panel);
+      }
+      table.log td {
+        padding: 7px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      table.log tr:last-child td {
+        border-bottom: 0;
+      }
+      table.log td.t {
+        color: var(--muted);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      table.log td.dir {
+        white-space: nowrap;
+      }
+      table.log td.topic,
+      table.log td.payload {
+        font-family: var(--mono);
+        font-size: 12.5px;
+      }
+      table.log td.topic {
+        white-space: nowrap;
+      }
+      table.log td.payload {
+        word-break: break-all;
+      }
+      .tag {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .tag.up {
+        background: var(--teal-soft);
+        color: var(--teal);
+      }
+      .tag.down {
+        background: var(--alert-soft);
+        color: var(--alert);
+      }
 
-  $("btnSettings").addEventListener("click", () => {
-    $("inUrl").value = cfg.url;
-    $("inBase").value = cfg.base;
-    $("dlg").returnValue = "";
-    $("dlg").showModal();
-  });
-  $("btnReset").addEventListener("click", () => { $("inUrl").value = DEFAULTS.url; $("inBase").value = DEFAULTS.base; });
-  $("dlg").addEventListener("close", () => {
-    if ($("dlg").returnValue !== "save") return;
-    const url = $("inUrl").value.trim(), base = $("inBase").value.trim().replace(/\/+$/, "");
-    if (!url || !base) return;
-    cfg = { url, base };
-    saveCfg(cfg);
-    connect();
-  });
+      /* Settings dialog */
+      dialog {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 22px;
+        background: var(--panel);
+        color: var(--ink);
+        width: min(520px, calc(100% - 32px));
+      }
+      dialog::backdrop {
+        background: rgba(10, 18, 26, 0.5);
+      }
+      dialog h2 {
+        margin: 0 0 14px;
+        font-size: 18px;
+      }
+      dialog label {
+        display: block;
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+      dialog input {
+        display: block;
+        width: 100%;
+        margin-top: 6px;
+        padding: 9px 11px;
+        font: inherit;
+        font-family: var(--mono);
+        font-size: 13px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      dialog p {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 16px;
+      }
+      dialog .row {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
 
-  setInterval(() => {
-    setDevice();
-    if (lastTele) {
-      const s = Math.round((Date.now() - lastTele) / 1000);
-      $("stamp").textContent = "Data terakhir " + (s <= 1 ? "baru saja" : s + " detik lalu");
-    }
-  }, 1000);
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .controls {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .ctl:nth-child(2) {
+          border-right: 0;
+        }
+        .ctl:nth-child(-n + 2) {
+          border-bottom: 1px solid var(--line);
+        }
+      }
+      @media (max-width: 520px) {
+        .wrap {
+          padding: 14px 12px 32px;
+        }
+        .controls {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .ctl {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .ctl:last-child {
+          border-bottom: 0;
+        }
+        .temp .big {
+          font-size: 52px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <h1>
+          <span class="logo" aria-hidden="true"
+            ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 11l9-8 9 8" />
+              <path d="M5 10v10h14V10" />
+              <path d="M10 20v-6h4v6" /></svg></span
+          >SmartRoom 01<small>Monitoring dan kontrol ruangan berbasis ESP32 dan MQTT</small>
+        </h1>
+        <div class="conn">
+          <span class="pill" title="Koneksi dashboard ke broker MQTT"><span class="dot wait" id="dotBroker"></span><span id="txtBroker">Menghubungkan ke broker</span></span>
+          <span class="pill" title="Status ESP32 (dari topik online)"><span class="dot" id="dotDevice"></span><span id="txtDevice">Menunggu ESP32</span></span>
+          <button class="ghost" id="btnSettings" type="button">Pengaturan koneksi</button>
+        </div>
+      </header>
 
-  initChart();
-  updateControls();
-  connect();
-})();
-</script>
-</body>
+      <div class="banner" id="banner" role="alert">
+        <strong>Gerakan terdeteksi, alarm berbunyi</strong>
+        <span>Sensor PIR menangkap gerakan saat alarm aktif.</span>
+        <button type="button" id="btnBannerOff">Matikan alarm</button>
+      </div>
+
+      <main class="grid">
+        <figure class="panel room-panel" style="margin: 0">
+          <svg id="room" viewBox="0 0 640 420" role="img" aria-labelledby="roomTitle">
+            <title id="roomTitle">Denah ruangan dengan posisi sensor dan aktuator</title>
+            <defs>
+              <radialGradient id="lampGrad">
+                <stop offset="0" stop-color="var(--lamp)" stop-opacity=".55" />
+                <stop offset="1" stop-color="var(--lamp)" stop-opacity="0" />
+              </radialGradient>
+              <clipPath id="roomClip"><rect x="22" y="22" width="596" height="366" rx="4" /></clipPath>
+            </defs>
+
+            <rect id="walls" x="20" y="20" width="600" height="370" rx="6" />
+
+            <g clip-path="url(#roomClip)">
+              <circle id="glow" cx="320" cy="200" r="150" fill="url(#lampGrad)" />
+              <path id="cone" d="M600 372 L360 196 Q430 140 470 120 Z" />
+            </g>
+
+            <!-- Jendela + LDR -->
+            <rect id="sky" x="390" y="11" width="160" height="18" rx="3" fill="var(--sky-day)" stroke="var(--wall)" stroke-width="2" />
+            <circle cx="470" cy="56" r="9" fill="var(--panel)" stroke="var(--wall)" stroke-width="2" />
+            <path d="M465 56 h10 M470 51 v10" stroke="var(--wall)" stroke-width="1.6" />
+            <text class="lbl" x="486" y="52">LDR | GPIO34</text>
+            <text class="val" x="486" y="72" font-size="16" id="svgLux">-- lux</text>
+
+            <!-- DHT22 -->
+            <rect x="44" y="46" width="26" height="36" rx="4" fill="var(--panel)" stroke="var(--wall)" stroke-width="2" />
+            <path d="M50 56 h14 M50 63 h14 M50 70 h14" stroke="var(--muted)" stroke-width="1.6" />
+            <text class="lbl" x="82" y="58">DHT22 | GPIO15</text>
+            <text class="val" x="82" y="80" font-size="18" id="svgClimate">-- °C -- %</text>
+
+            <!-- Lampu -->
+            <circle id="bulb" cx="320" cy="200" r="20" />
+            <text class="lbl" x="320" y="244" text-anchor="middle">Lampu (LED kuning) | GPIO25</text>
+
+            <!-- Kipas -->
+            <circle cx="130" cy="300" r="40" fill="none" stroke="var(--line)" stroke-width="2" />
+            <g id="blades">
+              <path d="M130 300 C 122 280, 124 266, 130 262 C 136 266, 138 280, 130 300 Z" />
+              <path d="M130 300 C 122 280, 124 266, 130 262 C 136 266, 138 280, 130 300 Z" transform="rotate(120 130 300)" />
+              <path d="M130 300 C 122 280, 124 266, 130 262 C 136 266, 138 280, 130 300 Z" transform="rotate(240 130 300)" />
+            </g>
+            <circle cx="130" cy="300" r="6" fill="var(--wall)" />
+            <text class="lbl" x="184" y="296">Kipas (relay)</text>
+            <text class="lbl" x="184" y="314">GPIO26</text>
+
+            <!-- Alarm -->
+            <path id="siren" d="M584 168 h18 v26 h-18 l-12 10 v-46 z" />
+            <text class="lbl" x="566" y="226" text-anchor="end">Buzzer GPIO13</text>
+            <text class="lbl" x="566" y="244" text-anchor="end">LED merah GPIO14</text>
+
+            <!-- PIR -->
+            <circle cx="600" cy="372" r="10" fill="var(--panel)" stroke="var(--wall)" stroke-width="2" />
+            <text class="lbl" x="582" y="360" text-anchor="end">PIR | GPIO27</text>
+
+            <!-- Pintu -->
+            <rect x="260" y="386" width="80" height="9" fill="var(--bg)" />
+            <path d="M260 390 A 80 80 0 0 1 340 310" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="4 4" />
+            <line x1="260" y1="390" x2="260" y2="310" stroke="var(--wall)" stroke-width="3" />
+          </svg>
+          <figcaption id="roomCaption">Denah menunjukkan keadaan perangkat secara langsung: lampu menyala, kipas berputar, area PIR memerah saat ada gerakan.</figcaption>
+        </figure>
+
+        <section class="panel readings" aria-labelledby="hReadings">
+          <h2 id="hReadings">Kondisi ruangan</h2>
+          <div class="temp">
+            <div class="big"><span id="vTemp">--</span><sup>°C</sup></div>
+            <div class="state" id="tempState">Menunggu data dari ESP32</div>
+          </div>
+          <dl class="list">
+            <div>
+              <dt>Kelembapan</dt>
+              <dd><span id="vHum">--</span><small>%</small></dd>
+            </div>
+            <div>
+              <dt>Intensitas cahaya</dt>
+              <dd><span id="vLux">--</span><small>lux</small></dd>
+            </div>
+            <div>
+              <dt>Gerakan</dt>
+              <dd id="vMotion">--</dd>
+            </div>
+          </dl>
+          <div class="stamp" id="stamp">Belum ada data</div>
+        </section>
+
+        <section class="panel controls" aria-label="Kontrol perangkat">
+          <div class="ctl">
+            <span class="name">Mode</span>
+            <div class="seg" role="group" aria-label="Mode kontrol">
+              <button type="button" id="mAuto" aria-pressed="false">Otomatis</button>
+              <button type="button" id="mManual" aria-pressed="false">Manual</button>
+            </div>
+            <span class="sub" id="modeSub">Otomatis: lampu dan kipas diatur sensor</span>
+          </div>
+          <div class="ctl">
+            <span class="name">Lampu</span>
+            <button type="button" class="switch" id="swLampu" role="switch" aria-checked="false" disabled><span class="track"></span><span class="lab" id="labLampu">Mati</span></button>
+            <span class="sub" id="subLampu">Nyala otomatis jika cahaya &lt; 100 lux</span>
+          </div>
+          <div class="ctl">
+            <span class="name">Kipas</span>
+            <button type="button" class="switch" id="swKipas" role="switch" aria-checked="false" disabled><span class="track"></span><span class="lab" id="labKipas">Mati</span></button>
+            <span class="sub" id="subKipas">Nyala ≥ 30 °C, mati ≤ 28 °C</span>
+          </div>
+          <div class="ctl">
+            <span class="name">Alarm gerakan</span>
+            <button type="button" class="btn" id="btnAlarm">Aktifkan alarm</button>
+            <span class="sub" id="subAlarm">Status belum diketahui</span>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="hChart">
+          <h2 id="hChart">Suhu dan kelembapan</h2>
+          <p class="hint">Dua menit terakhir, diperbarui setiap 2 detik.</p>
+          <div class="chart-box"><canvas id="chart" aria-label="Grafik suhu dan kelembapan"></canvas></div>
+        </section>
+
+        <section class="panel" aria-labelledby="hAlerts">
+          <h2 id="hAlerts">Peringatan</h2>
+          <p class="hint">Dikirim ESP32 saat PIR mendeteksi gerakan ketika alarm aktif.</p>
+          <ul class="alerts" id="alerts"></ul>
+          <p class="empty" id="alertsEmpty">Belum ada peringatan.</p>
+        </section>
+
+        <section class="panel log-panel" aria-labelledby="hLog">
+          <div class="log-head">
+            <h2 id="hLog">Lalu lintas MQTT</h2>
+            <p class="hint">Semua pesan di topik <code id="baseCode"></code>. Isinya masih teks biasa, jadi siapa pun yang subscribe ke topik yang sama bisa membacanya.</p>
+          </div>
+          <div class="log-scroll">
+            <table class="log">
+              <thead>
+                <tr>
+                  <th>Waktu</th>
+                  <th>Arah</th>
+                  <th>Topik</th>
+                  <th>Payload</th>
+                </tr>
+              </thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="dlg">
+      <form method="dialog" id="cfgForm">
+        <h2>Pengaturan koneksi</h2>
+        <label
+          >Alamat broker (WebSocket)
+          <input id="inUrl" type="url" required spellcheck="false" />
+        </label>
+        <label
+          >Topik dasar
+          <input id="inBase" type="text" required spellcheck="false" />
+        </label>
+        <p>
+          Topik dasar harus sama dengan <code>TOPIK_DASAR</code> di sketch ESP32. Cadangan jika HiveMQ bermasalah: <code>wss://broker.emqx.io:8084/mqtt</code> (ubah juga <code>MQTT_HOST</code> di sketch menjadi <code>broker.emqx.io</code>).
+        </p>
+        <div class="row">
+          <button class="ghost" type="button" id="btnReset">Kembalikan bawaan</button>
+          <button class="ghost" value="cancel" formnovalidate>Batal</button>
+          <button class="btn" value="save" id="btnSave">Simpan dan sambungkan</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script>
+      (function () {
+        "use strict";
+        const DEFAULTS = { url: "wss://broker.hivemq.com:8884/mqtt", base: "filkom-iot/smartroom01" };
+        const MAX_POINTS = 60,
+          MAX_LOG = 80;
+        const $ = (id) => document.getElementById(id);
+        const decoder = new TextDecoder();
+
+        function loadCfg() {
+          try {
+            const raw = localStorage.getItem("smartroom-cfg");
+            if (raw) {
+              const c = JSON.parse(raw);
+              if (c && typeof c.url === "string" && typeof c.base === "string") return c;
+            }
+          } catch (e) {
+            /* storage tidak tersedia */
+          }
+          return { ...DEFAULTS };
+        }
+        function saveCfg(c) {
+          try {
+            localStorage.setItem("smartroom-cfg", JSON.stringify(c));
+          } catch (e) {}
+        }
+
+        let cfg = loadCfg();
+        let client = null;
+        let lastTele = 0;
+        const st = { mode: null, lampu: 0, kipas: 0, alarm_aktif: 0, alarm_berbunyi: 0, online: null };
+
+        /* ---------------- Status koneksi ---------------- */
+        function setBroker(kind, detail) {
+          const dot = $("dotBroker"),
+            txt = $("txtBroker");
+          dot.className = "dot " + (kind === "ok" ? "ok" : kind === "wait" ? "wait" : "bad");
+          txt.textContent = kind === "ok" ? "Broker terhubung" : kind === "wait" ? "Menghubungkan ke broker" : detail || "Broker terputus, mencoba lagi";
+          updateControls();
+          setDevice();
+        }
+        function setDevice() {
+          const dot = $("dotDevice"),
+            txt = $("txtDevice");
+          const stale = lastTele && Date.now() - lastTele > 10000;
+          if (!(client && client.connected)) {
+            dot.className = "dot";
+            txt.textContent = "Status ESP32 tidak diketahui";
+          } else if (st.online === false) {
+            dot.className = "dot bad";
+            txt.textContent = "ESP32 offline";
+          } else if (st.online === true && !stale) {
+            dot.className = "dot ok";
+            txt.textContent = "ESP32 online";
+          } else if (stale) {
+            dot.className = "dot wait";
+            txt.textContent = "Data ESP32 terhenti";
+          } else {
+            dot.className = "dot";
+            txt.textContent = "Menunggu ESP32";
+          }
+        }
+
+        /* ---------------- Grafik ---------------- */
+        let chart = null;
+        function cssVar(name) {
+          return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        }
+        function initChart() {
+          if (typeof Chart === "undefined") {
+            $("chart").replaceWith(Object.assign(document.createElement("p"), { className: "empty", textContent: "Grafik tidak bisa dimuat (library Chart.js gagal diunduh)." }));
+            return;
+          }
+          Chart.defaults.font.family = cssVar("--font");
+          chart = new Chart($("chart"), {
+            type: "line",
+            data: {
+              labels: [],
+              datasets: [
+                { label: "Suhu (°C)", data: [], yAxisID: "y", borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
+                { label: "Kelembapan (%)", data: [], yAxisID: "y1", borderWidth: 2, pointRadius: 0, tension: 0.3, borderDash: [5, 4] },
+              ],
+            },
+            options: {
+              animation: false,
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: "index", intersect: false },
+              plugins: { legend: { labels: { boxWidth: 14, boxHeight: 2 } } },
+              scales: {
+                x: { ticks: { maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false } },
+                y: { position: "left", title: { display: true, text: "°C" } },
+                y1: { position: "right", title: { display: true, text: "%" }, grid: { drawOnChartArea: false } },
+              },
+            },
+          });
+          paintChart();
+        }
+        function paintChart() {
+          if (!chart) return;
+          const ink = cssVar("--muted"),
+            line = cssVar("--line");
+          chart.data.datasets[0].borderColor = cssVar("--alert");
+          chart.data.datasets[1].borderColor = cssVar("--hum");
+          chart.options.color = ink;
+          for (const k of ["x", "y", "y1"]) {
+            chart.options.scales[k].ticks.color = ink;
+            chart.options.scales[k].grid.color = line;
+            if (chart.options.scales[k].title) chart.options.scales[k].title.color = ink;
+          }
+          chart.update();
+        }
+        function pushChart(t, h) {
+          if (!chart) return;
+          const now = new Date();
+          chart.data.labels.push(now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+          chart.data.datasets[0].data.push(t);
+          chart.data.datasets[1].data.push(h);
+          if (chart.data.labels.length > MAX_POINTS) {
+            chart.data.labels.shift();
+            chart.data.datasets.forEach((d) => d.data.shift());
+          }
+          chart.update();
+        }
+
+        /* ---------------- Tampilan data ---------------- */
+        const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+        function fmt(v, d) {
+          return v === null ? "--" : v.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
+        }
+
+        function onTelemetry(d) {
+          const t = num(d.suhu),
+            h = num(d.kelembapan),
+            lux = num(d.cahaya);
+          const motion = d.gerakan === 1 || d.gerakan === true;
+          lastTele = Date.now();
+
+          $("vTemp").textContent = fmt(t, 1);
+          $("vHum").textContent = fmt(h, 1);
+          $("vLux").textContent = fmt(lux, 0);
+          const vm = $("vMotion");
+          vm.textContent = motion ? "Terdeteksi" : "Tidak ada";
+          vm.className = motion ? "motion-yes" : "";
+          $("tempState").textContent = t === null ? "Data suhu tidak valid" : t >= 30 ? "Panas: di atas ambang kipas (30 °C)" : t <= 28 ? "Nyaman: di bawah ambang kipas" : "Di antara ambang 28 dan 30 °C (histeresis)";
+
+          $("svgClimate").textContent = fmt(t, 1) + " °C  " + fmt(h, 0) + " %";
+          $("svgLux").textContent = fmt(lux, 0) + " lux";
+          $("room").classList.toggle("motion", motion);
+
+          // Warna jendela mengikuti cahaya: gelap -> malam, terang -> siang
+          if (lux !== null) {
+            const k = Math.max(0, Math.min(1, Math.log10(Math.max(lux, 1)) / 3.5));
+            $("sky").style.fill = `color-mix(in srgb, var(--sky-day) ${Math.round(k * 100)}%, var(--sky-night))`;
+          }
+          if (t !== null && h !== null) pushChart(t, h);
+          setDevice();
+        }
+
+        function onStatus(d) {
+          st.mode = d.mode === "MANUAL" ? "MANUAL" : d.mode === "AUTO" ? "AUTO" : null;
+          st.lampu = d.lampu ? 1 : 0;
+          st.kipas = d.kipas ? 1 : 0;
+          st.alarm_aktif = d.alarm_aktif ? 1 : 0;
+          st.alarm_berbunyi = d.alarm_berbunyi ? 1 : 0;
+
+          const room = $("room");
+          room.classList.toggle("lamp-on", !!st.lampu);
+          room.classList.toggle("fan-on", !!st.kipas);
+          room.classList.toggle("armed", !!st.alarm_aktif);
+          room.classList.toggle("alarm", !!st.alarm_berbunyi);
+          $("banner").classList.toggle("show", !!st.alarm_berbunyi);
+          updateControls();
+        }
+
+        function updateControls() {
+          const connected = !!(client && client.connected);
+          const manual = st.mode === "MANUAL";
+          $("mAuto").setAttribute("aria-pressed", String(st.mode === "AUTO"));
+          $("mManual").setAttribute("aria-pressed", String(manual));
+          $("mAuto").disabled = $("mManual").disabled = !connected;
+          $("modeSub").textContent = st.mode === null ? "Status belum diketahui" : manual ? "Manual: lampu dan kipas diatur dari sini" : "Otomatis: lampu dan kipas diatur sensor";
+
+          for (const [key, sw, lab, sub, autoText] of [
+            ["lampu", "swLampu", "labLampu", "subLampu", "Nyala otomatis jika cahaya < 100 lux"],
+            ["kipas", "swKipas", "labKipas", "subKipas", "Nyala ≥ 30 °C, mati ≤ 28 °C"],
+          ]) {
+            const on = !!st[key];
+            $(sw).setAttribute("aria-checked", String(on));
+            $(sw).disabled = !connected || !manual;
+            $(lab).textContent = on ? "Nyala" : "Mati";
+            $(sub).textContent = manual ? "Ketuk untuk menyalakan atau mematikan" : autoText;
+          }
+
+          const btn = $("btnAlarm");
+          btn.disabled = !connected;
+          btn.textContent = st.alarm_aktif ? "Matikan alarm" : "Aktifkan alarm";
+          btn.className = st.alarm_aktif ? "btn danger" : "btn";
+          $("subAlarm").textContent = st.alarm_berbunyi ? "Sedang berbunyi" : st.alarm_aktif ? "Aktif: gerakan akan memicu buzzer" : "Nonaktif: gerakan hanya dicatat";
+        }
+
+        function addAlert(d) {
+          $("alertsEmpty").hidden = true;
+          const li = document.createElement("li");
+          const time = document.createElement("time");
+          time.textContent = new Date().toLocaleTimeString("id-ID");
+          const msg = document.createElement("div");
+          msg.className = "msg";
+          msg.textContent = typeof d.pesan === "string" ? d.pesan : "Peringatan dari ESP32";
+          li.append(time, msg);
+          $("alerts").prepend(li);
+          while ($("alerts").children.length > 30) $("alerts").lastElementChild.remove();
+        }
+
+        function logTraffic(sub, text) {
+          const tr = document.createElement("tr");
+          const toDevice = sub.startsWith("perintah/");
+          const cells = [new Date().toLocaleTimeString("id-ID"), null, cfg.base + "/" + sub, text === "" ? "(kosong)" : text];
+          const cls = ["t", "dir", "topic", "payload"];
+          cells.forEach((c, i) => {
+            const td = document.createElement("td");
+            td.className = cls[i];
+            if (i === 1) {
+              const tag = document.createElement("span");
+              tag.className = "tag " + (toDevice ? "down" : "up");
+              tag.textContent = toDevice ? "Dashboard → ESP32" : "ESP32 → Dashboard";
+              td.append(tag);
+            } else {
+              td.textContent = c; // textContent: payload dari broker publik tidak dieksekusi sebagai HTML
+            }
+            tr.append(td);
+          });
+          const body = $("logBody");
+          body.prepend(tr);
+          while (body.children.length > MAX_LOG) body.lastElementChild.remove();
+        }
+
+        /* ---------------- MQTT ---------------- */
+        function onMessage(topic, payload) {
+          if (!topic.startsWith(cfg.base + "/")) return;
+          const sub = topic.slice(cfg.base.length + 1);
+          const text = decoder.decode(payload);
+          logTraffic(sub, text);
+          if (sub === "online") {
+            st.online = text === "1";
+            setDevice();
+            return;
+          }
+          if (sub.startsWith("perintah/") || text === "") return;
+          let d;
+          try {
+            d = JSON.parse(text);
+          } catch (e) {
+            return;
+          }
+          if (!d || typeof d !== "object") return;
+          if (sub === "telemetri") onTelemetry(d);
+          else if (sub === "status") onStatus(d);
+          else if (sub === "peringatan") addAlert(d);
+        }
+
+        function connect() {
+          if (typeof mqtt === "undefined") {
+            setBroker("bad", "Library MQTT gagal dimuat, periksa internet");
+            return;
+          }
+          if (client) {
+            const old = client;
+            client = null;
+            old.end(true);
+          }
+          st.online = null;
+          st.mode = null;
+          lastTele = 0;
+          $("stamp").textContent = "Belum ada data";
+          $("baseCode").textContent = cfg.base + "/#";
+          setBroker("wait");
+          const clientId = "dashboard-" + Math.random().toString(16).slice(2, 8);
+          const c = mqtt.connect(cfg.url, { clientId, clean: true, connectTimeout: 8000, reconnectPeriod: 3000 });
+          client = c;
+          c.on("connect", () => {
+            if (c !== client) return;
+            setBroker("ok");
+            c.subscribe(cfg.base + "/#", { qos: 0 });
+          });
+          c.on("reconnect", () => {
+            if (c === client) setBroker("wait");
+          });
+          c.on("offline", () => {
+            if (c === client) setBroker("bad");
+          });
+          c.on("close", () => {
+            if (c === client && !c.connected) setBroker("bad");
+          });
+          c.on("error", (e) => {
+            if (c === client) setBroker("bad", "Gagal: " + (e && e.message ? e.message : "koneksi ditolak"));
+          });
+          c.on("message", (topic, payload) => {
+            if (c === client) onMessage(topic, payload);
+          });
+        }
+
+        function send(cmd, value) {
+          if (!client || !client.connected) return;
+          client.publish(cfg.base + "/perintah/" + cmd, value, { qos: 0, retain: false });
+        }
+
+        /* ---------------- Event tombol ---------------- */
+        // Tampilan langsung diperbarui saat diklik; status dari ESP32 akan menimpanya jika berbeda.
+        function act(cmd, value, key, v) {
+          if (!client || !client.connected) return;
+          send(cmd, value);
+          st[key] = v;
+          updateControls();
+        }
+        $("mAuto").addEventListener("click", () => act("mode", "AUTO", "mode", "AUTO"));
+        $("mManual").addEventListener("click", () => act("mode", "MANUAL", "mode", "MANUAL"));
+        $("swLampu").addEventListener("click", () => act("lampu", st.lampu ? "OFF" : "ON", "lampu", st.lampu ? 0 : 1));
+        $("swKipas").addEventListener("click", () => act("kipas", st.kipas ? "OFF" : "ON", "kipas", st.kipas ? 0 : 1));
+        $("btnAlarm").addEventListener("click", () => act("alarm", st.alarm_aktif ? "DISARM" : "ARM", "alarm_aktif", st.alarm_aktif ? 0 : 1));
+        $("btnBannerOff").addEventListener("click", () => send("alarm", "DISARM"));
+
+        $("btnSettings").addEventListener("click", () => {
+          $("inUrl").value = cfg.url;
+          $("inBase").value = cfg.base;
+          $("dlg").returnValue = "";
+          $("dlg").showModal();
+        });
+        $("btnReset").addEventListener("click", () => {
+          $("inUrl").value = DEFAULTS.url;
+          $("inBase").value = DEFAULTS.base;
+        });
+        $("dlg").addEventListener("close", () => {
+          if ($("dlg").returnValue !== "save") return;
+          const url = $("inUrl").value.trim(),
+            base = $("inBase").value.trim().replace(/\/+$/, "");
+          if (!url || !base) return;
+          cfg = { url, base };
+          saveCfg(cfg);
+          connect();
+        });
+
+        setInterval(() => {
+          setDevice();
+          if (lastTele) {
+            const s = Math.round((Date.now() - lastTele) / 1000);
+            $("stamp").textContent = "Data terakhir " + (s <= 1 ? "baru saja" : s + " detik lalu");
+          }
+        }, 1000);
+
+        initChart();
+        updateControls();
+        connect();
+      })();
+    </script>
+  </body>
 </html>
