@@ -859,7 +859,7 @@
           <div class="ctl">
             <span class="name">Lampu</span>
             <button type="button" class="switch" id="swLampu" role="switch" aria-checked="false" disabled><span class="track"></span><span class="lab" id="labLampu">Mati</span></button>
-            <span class="sub" id="subLampu">Nyala otomatis jika cahaya &lt; 100 lux</span>
+            <span class="sub" id="subLampu">Nyala otomatis jika cahaya ≤ 100 lux</span>
           </div>
           <div class="ctl">
             <span class="name">Kipas</span>
@@ -1237,7 +1237,7 @@
           $("modeSub").textContent = st.mode === null ? "Status belum diketahui" : manual ? "Manual: lampu dan kipas diatur dari sini" : "Otomatis: lampu dan kipas diatur sensor";
 
           for (const [key, sw, lab, sub, autoText] of [
-            ["lampu", "swLampu", "labLampu", "subLampu", "Nyala otomatis jika cahaya < 100 lux"],
+            ["lampu", "swLampu", "labLampu", "subLampu", "Nyala otomatis jika cahaya ≤ 100 lux"],
             ["kipas", "swKipas", "labKipas", "subKipas", "Nyala ≥ 30 °C, mati ≤ 28 °C"],
           ]) {
             const on = !!st[key];
