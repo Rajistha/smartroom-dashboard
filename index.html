@@ -1218,6 +1218,8 @@
           st.kipas = d.kipas ? 1 : 0;
           st.alarm_aktif = d.alarm_aktif ? 1 : 0;
           st.alarm_berbunyi = d.alarm_berbunyi ? 1 : 0;
+          lastStatus = { ...st };
+          lastStatusAt = Date.now();
 
           const room = $("room");
           room.classList.toggle("lamp-on", !!st.lampu);
@@ -1392,10 +1394,20 @@
 
         /* ---------------- Event tombol ---------------- */
         // Tampilan langsung diperbarui saat diklik; status dari ESP32 akan menimpanya jika berbeda.
+        // Tampilan mengikuti tombol dulu; jika ESP32 tidak membalas dengan status baru dalam 4 detik, kembalikan ke status terakhir yang dikonfirmasi ESP32.
+        let lastStatus = null,
+          lastStatusAt = 0;
         function act(cmd, value, field, v) {
           if (!send(cmd, value)) return;
+          const sentAt = Date.now();
           st[field] = v;
           updateControls();
+          setTimeout(() => {
+            if (lastStatusAt >= sentAt || !lastStatus) return;
+            Object.assign(st, lastStatus);
+            updateControls();
+            toast("ESP32 tidak membalas perintah. Pastikan simulasi Wokwi sedang berjalan dan jendelanya tidak di tab latar belakang.");
+          }, 4000);
         }
         $("mAuto").addEventListener("click", () => act("mode", "AUTO", "mode", "AUTO"));
         $("mManual").addEventListener("click", () => act("mode", "MANUAL", "mode", "MANUAL"));
