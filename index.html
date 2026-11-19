@@ -597,7 +597,7 @@
         width: 100%;
         border-collapse: collapse;
         font-size: 13px;
-        min-width: 640px;
+        min-width: 820px;
       }
       table.log th {
         text-align: left;
@@ -652,6 +652,9 @@
         color: var(--alert);
       }
 
+      #toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); max-width: calc(100% - 32px); background: var(--ink); color: var(--panel);
+        padding: 11px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; box-shadow: 0 12px 30px -10px rgba(15,37,71,.5); }
+      #toast.show { opacity: 1; transform: translate(-50%, 0); }
       /* Settings dialog */
       dialog {
         border: 1px solid var(--line);
@@ -746,6 +749,7 @@
         <div class="conn">
           <span class="pill" title="Koneksi dashboard ke broker MQTT"><span class="dot wait" id="dotBroker"></span><span id="txtBroker">Menghubungkan ke broker</span></span>
           <span class="pill" title="Status ESP32 (dari topik online)"><span class="dot" id="dotDevice"></span><span id="txtDevice">Menunggu ESP32</span></span>
+          <span class="pill" title="Status enkripsi payload MQTT"><span class="dot wait" id="dotCrypto"></span><span id="txtCrypto">Tanpa enkripsi</span></span>
           <button class="ghost" id="btnSettings" type="button">Pengaturan koneksi</button>
         </div>
       </header>
@@ -885,8 +889,9 @@
         <section class="panel log-panel" aria-labelledby="hLog">
           <div class="log-head">
             <h2 id="hLog">Lalu lintas MQTT</h2>
-            <p class="hint">Semua pesan di topik <code id="baseCode"></code>. Isinya masih teks biasa, jadi siapa pun yang subscribe ke topik yang sama bisa membacanya.</p>
+            <p class="hint" id="logHint"></p>
           </div>
+          <p class="hint" id="perf" style="margin:0 0 10px"></p>
           <div class="log-scroll">
             <table class="log">
               <thead>
@@ -894,7 +899,8 @@
                   <th>Waktu</th>
                   <th>Arah</th>
                   <th>Topik</th>
-                  <th>Payload</th>
+                  <th>Payload (di jaringan)</th>
+                  <th>Isi (terdekripsi)</th>
                 </tr>
               </thead>
               <tbody id="logBody"></tbody>
@@ -915,6 +921,9 @@
           >Topik dasar
           <input id="inBase" type="text" required spellcheck="false" />
         </label>
+        <label>Kunci bersama (32 karakter hex, kosongkan = tanpa enkripsi)
+          <input id="inKey" type="text" pattern="([0-9a-fA-F]{32})?" maxlength="32" spellcheck="false" autocomplete="off" placeholder="32 karakter hex" />
+        </label>
         <p>
           Topik dasar harus sama dengan <code>TOPIK_DASAR</code> di sketch ESP32. Cadangan jika HiveMQ bermasalah: <code>wss://broker.emqx.io:8084/mqtt</code> (ubah juga <code>MQTT_HOST</code> di sketch menjadi <code>broker.emqx.io</code>).
         </p>
@@ -925,11 +934,12 @@
         </div>
       </form>
     </dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
 
     <script>
       (function () {
         "use strict";
-        const DEFAULTS = { url: "wss://broker.hivemq.com:8884/mqtt", base: "filkom-iot/smartroom01" };
+        const DEFAULTS = { url: "wss://broker.hivemq.com:8884/mqtt", base: "filkom-iot/smartroom01", key: "" };
         const MAX_POINTS = 60,
           MAX_LOG = 80;
         const $ = (id) => document.getElementById(id);
@@ -940,7 +950,7 @@
             const raw = localStorage.getItem("smartroom-cfg");
             if (raw) {
               const c = JSON.parse(raw);
-              if (c && typeof c.url === "string" && typeof c.base === "string") return c;
+              if (c && typeof c.url === "string" && typeof c.base === "string") return { url: c.url, base: c.base, key: typeof c.key === "string" ? c.key : "" };
             }
           } catch (e) {
             /* storage tidak tersedia */
@@ -958,7 +968,124 @@
         let lastTele = 0;
         const st = { mode: null, lampu: 0, kipas: 0, alarm_aktif: 0, alarm_berbunyi: 0, online: null };
 
-        /* ---------------- Status koneksi ---------------- */
+          /* ---------------- Kripto: Ascon-128 (AEAD) ---------------- */
+  const M64 = 0xFFFFFFFFFFFFFFFFn;
+  const rotr = (x, n) => ((x >> BigInt(n)) | (x << BigInt(64 - n))) & M64;
+  function permute(s, rounds) {
+    for (let i = 12 - rounds; i < 12; i++) {
+      s[2] ^= BigInt(((0xf - i) << 4) | i);
+      s[0] ^= s[4]; s[4] ^= s[3]; s[2] ^= s[1];
+      const t = s.map((v, j) => ~v & M64 & s[(j + 1) % 5]);
+      for (let j = 0; j < 5; j++) s[j] ^= t[(j + 1) % 5];
+      s[1] ^= s[0]; s[0] ^= s[4]; s[3] ^= s[2]; s[2] = ~s[2] & M64;
+      s[0] ^= rotr(s[0], 19) ^ rotr(s[0], 28);
+      s[1] ^= rotr(s[1], 61) ^ rotr(s[1], 39);
+      s[2] ^= rotr(s[2], 1)  ^ rotr(s[2], 6);
+      s[3] ^= rotr(s[3], 10) ^ rotr(s[3], 17);
+      s[4] ^= rotr(s[4], 7)  ^ rotr(s[4], 41);
+    }
+  }
+  function get64(b, o, n) { let v = 0n; for (let i = 0; i < n; i++) v |= BigInt(b[o + i]) << BigInt(56 - 8 * i); return v; }
+  function put64(v, b, o, n) { for (let i = 0; i < n; i++) b[o + i] = Number((v >> BigInt(56 - 8 * i)) & 0xFFn); }
+
+  // key, nonce: 16 byte. Hasil: ciphertext || tag (16 byte).
+  function asconInit(key, nonce, ad) {
+    const k0 = get64(key, 0, 8), k1 = get64(key, 8, 8);
+    const s = [0x80400c0600000000n, k0, k1, get64(nonce, 0, 8), get64(nonce, 8, 8)];
+    permute(s, 12);
+    s[3] ^= k0; s[4] ^= k1;
+    if (ad.length) {
+      let o = 0;
+      for (; ad.length - o >= 8; o += 8) { s[0] ^= get64(ad, o, 8); permute(s, 6); }
+      const r = ad.length - o;
+      s[0] ^= (r ? get64(ad, o, r) : 0n) ^ (0x80n << BigInt(56 - 8 * r));
+      permute(s, 6);
+    }
+    s[4] ^= 1n;
+    return s;
+  }
+  function asconTag(s, key) {
+    const k0 = get64(key, 0, 8), k1 = get64(key, 8, 8);
+    s[1] ^= k0; s[2] ^= k1;
+    permute(s, 12);
+    const tag = new Uint8Array(16);
+    put64(s[3] ^ k0, tag, 0, 8); put64(s[4] ^ k1, tag, 8, 8);
+    return tag;
+  }
+  function asconEncrypt(key, nonce, ad, msg) {
+    const s = asconInit(key, nonce, ad), out = new Uint8Array(msg.length + 16);
+    let o = 0;
+    for (; msg.length - o >= 8; o += 8) { s[0] ^= get64(msg, o, 8); put64(s[0], out, o, 8); permute(s, 6); }
+    const r = msg.length - o;
+    s[0] ^= (r ? get64(msg, o, r) : 0n) ^ (0x80n << BigInt(56 - 8 * r));
+    put64(s[0], out, o, r);
+    out.set(asconTag(s, key), msg.length);
+    return out;
+  }
+  function asconDecrypt(key, nonce, ad, box) {
+    if (box.length < 16) return null;
+    const n = box.length - 16, s = asconInit(key, nonce, ad), out = new Uint8Array(n);
+    let o = 0;
+    for (; n - o >= 8; o += 8) { const c = get64(box, o, 8); put64(s[0] ^ c, out, o, 8); s[0] = c; permute(s, 6); }
+    const r = n - o;
+    if (r) {
+      const c = get64(box, o, r), mask = M64 << BigInt(64 - 8 * r) & M64;
+      put64((s[0] ^ c) & mask, out, o, r);
+      s[0] = (s[0] & ~mask & M64) | c;
+    }
+    s[0] ^= 0x80n << BigInt(56 - 8 * r);
+    const tag = asconTag(s, key);
+    let diff = 0;
+    for (let i = 0; i < 16; i++) diff |= tag[i] ^ box[n + i];
+    return diff === 0 ? out : null;
+  }
+
+  const enc = new TextEncoder();
+  let key = null;                       // Uint8Array(16); null = tanpa enkripsi
+  let espSess = null;                   // 7 byte sesi ESP32, dipelajari dari telemetri
+  let rxLast = { sess: "", n: -1 };     // penghitung terakhir dari ESP32 (anti-replay)
+  let txLast = 0;
+  const perf = { enc: [], dec: [] };
+  const parseKey = (h) => /^[0-9a-fA-F]{32}$/.test(h) ? Uint8Array.from(h.match(/../g), (x) => parseInt(x, 16)) : null;
+  const toHex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join("");
+  function b64enc(u8) { let t = ""; u8.forEach((b) => { t += String.fromCharCode(b); }); return btoa(t); }
+  function b64dec(t) { try { return Uint8Array.from(atob(t.trim()), (c) => c.charCodeAt(0)); } catch (e) { return null; } }
+  function rec(list, ms) { list.push(ms); if (list.length > 100) list.shift(); }
+  function showPerf() {
+    const avg = (a) => a.length ? (a.reduce((x, y) => x + y, 0) / a.length).toFixed(3) + " ms (n=" + a.length + ")" : "-";
+    $("perf").textContent = key ? "Waktu proses di dashboard, rata-rata: enkripsi " + avg(perf.enc) + ", dekripsi " + avg(perf.dec) + "." : "";
+  }
+
+  // Paket: base64( nonce[16] | ciphertext | tag[16] ), AAD = topik lengkap
+  function sealMsg(sub, text) {
+    txLast = Math.max(txLast + 1, Date.now());
+    const nonce = new Uint8Array(16);
+    nonce[0] = 2; nonce.set(espSess, 1); put64(BigInt(txLast), nonce, 8, 8);
+    const t0 = performance.now();
+    const box = asconEncrypt(key, nonce, enc.encode(cfg.base + "/" + sub), enc.encode(text));
+    rec(perf.enc, performance.now() - t0);
+    const out = new Uint8Array(16 + box.length);
+    out.set(nonce); out.set(box, 16);
+    return b64enc(out);
+  }
+  function openMsg(sub, b64) {
+    const b = b64dec(b64);
+    if (!b || b.length < 32) return { err: "bukan paket terenkripsi" };
+    const nonce = b.slice(0, 16);
+    const t0 = performance.now();
+    const plain = asconDecrypt(key, nonce, enc.encode(cfg.base + "/" + sub), b.slice(16));
+    const dt = performance.now() - t0;
+    if (!plain) return { err: "tag tidak cocok: kunci salah atau pesan diubah" };
+    rec(perf.dec, dt);
+    return { text: decoder.decode(plain), dir: nonce[0], sess: toHex(nonce.slice(1, 8)), ctr: Number(get64(nonce, 8, 8)), nonce };
+  }
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 4500);
+  }
+
+/* ---------------- Status koneksi ---------------- */
         function setBroker(kind, detail) {
           const dot = $("dotBroker"),
             txt = $("txtBroker");
@@ -1140,11 +1267,11 @@
           while ($("alerts").children.length > 30) $("alerts").lastElementChild.remove();
         }
 
-        function logTraffic(sub, text) {
+        function logTraffic(sub, text, plain) {
           const tr = document.createElement("tr");
           const toDevice = sub.startsWith("perintah/");
-          const cells = [new Date().toLocaleTimeString("id-ID"), null, cfg.base + "/" + sub, text === "" ? "(kosong)" : text];
-          const cls = ["t", "dir", "topic", "payload"];
+          const cells = [new Date().toLocaleTimeString("id-ID"), null, cfg.base + "/" + sub, text === "" ? "(kosong)" : text, plain === undefined ? "-" : plain];
+          const cls = ["t", "dir", "topic", "payload", "payload"];
           cells.forEach((c, i) => {
             const td = document.createElement("td");
             td.className = cls[i];
@@ -1167,18 +1294,35 @@
         function onMessage(topic, payload) {
           if (!topic.startsWith(cfg.base + "/")) return;
           const sub = topic.slice(cfg.base.length + 1);
-          const text = decoder.decode(payload);
-          logTraffic(sub, text);
-          if (sub === "online") {
-            st.online = text === "1";
-            setDevice();
-            return;
+          const raw = decoder.decode(payload);
+          let text = raw;
+          if (key && sub !== "online" && raw !== "") {
+            const res = openMsg(sub, raw);
+            if (res.err) {
+              logTraffic(sub, raw, "(ditolak: " + res.err + ")");
+              if (sub === "telemetri") $("tempState").textContent = "Gagal dekripsi: periksa Kunci bersama di Pengaturan koneksi";
+              return;
+            }
+            const fromEsp = res.dir === 1 && !sub.startsWith("perintah/");
+            if (fromEsp && res.sess === rxLast.sess && res.ctr <= rxLast.n) {
+              logTraffic(sub, raw, "(ditolak: penghitung lama, kemungkinan replay)");
+              return;
+            }
+            if (fromEsp) {
+              rxLast = { sess: res.sess, n: res.ctr };
+              if (sub === "telemetri") espSess = res.nonce.slice(1, 8);
+            }
+            text = res.text;
+            logTraffic(sub, raw, text);
+            showPerf();
+          } else {
+            logTraffic(sub, raw, key ? undefined : "(tanpa enkripsi)");
           }
+          if (sub === "online") { st.online = text === "1"; setDevice(); return; }
           if (sub.startsWith("perintah/") || text === "") return;
           let d;
-          try {
-            d = JSON.parse(text);
-          } catch (e) {
+          try { d = JSON.parse(text); } catch (e) {
+            if (!key && sub === "telemetri") $("tempState").textContent = "Data terenkripsi: isi Kunci bersama di Pengaturan koneksi";
             return;
           }
           if (!d || typeof d !== "object") return;
@@ -1201,7 +1345,13 @@
           st.mode = null;
           lastTele = 0;
           $("stamp").textContent = "Belum ada data";
-          $("baseCode").textContent = cfg.base + "/#";
+          key = parseKey(cfg.key); espSess = null; rxLast = { sess: "", n: -1 };
+          perf.enc.length = 0; perf.dec.length = 0; showPerf();
+          $("dotCrypto").className = "dot " + (key ? "ok" : "wait");
+          $("txtCrypto").textContent = key ? "Enkripsi Ascon-128 aktif" : "Tanpa enkripsi";
+          $("logHint").textContent = key
+            ? "Semua pesan di topik " + cfg.base + "/#. Kolom Payload adalah data di jaringan (terenkripsi Ascon-128); kolom Isi adalah hasil dekripsi di dashboard."
+            : "Semua pesan di topik " + cfg.base + "/#. Tanpa kunci bersama, isinya teks biasa, jadi siapa pun yang subscribe ke topik yang sama bisa membacanya.";
           setBroker("wait");
           const clientId = "dashboard-" + Math.random().toString(16).slice(2, 8);
           const c = mqtt.connect(cfg.url, { clientId, clean: true, connectTimeout: 8000, reconnectPeriod: 3000 });
@@ -1229,16 +1379,22 @@
         }
 
         function send(cmd, value) {
-          if (!client || !client.connected) return;
-          client.publish(cfg.base + "/perintah/" + cmd, value, { qos: 0, retain: false });
+          if (!client || !client.connected) return false;
+          let payload = value;
+          if (key) {
+            if (!espSess) { toast("Perintah ditahan: tunggu telemetri ESP32 dulu untuk sinkron sesi enkripsi."); return false; }
+            payload = sealMsg("perintah/" + cmd, value);
+            showPerf();
+          }
+          client.publish(cfg.base + "/perintah/" + cmd, payload, { qos: 0, retain: false });
+          return true;
         }
 
         /* ---------------- Event tombol ---------------- */
         // Tampilan langsung diperbarui saat diklik; status dari ESP32 akan menimpanya jika berbeda.
-        function act(cmd, value, key, v) {
-          if (!client || !client.connected) return;
-          send(cmd, value);
-          st[key] = v;
+        function act(cmd, value, field, v) {
+          if (!send(cmd, value)) return;
+          st[field] = v;
           updateControls();
         }
         $("mAuto").addEventListener("click", () => act("mode", "AUTO", "mode", "AUTO"));
@@ -1251,19 +1407,21 @@
         $("btnSettings").addEventListener("click", () => {
           $("inUrl").value = cfg.url;
           $("inBase").value = cfg.base;
+          $("inKey").value = cfg.key;
           $("dlg").returnValue = "";
           $("dlg").showModal();
         });
         $("btnReset").addEventListener("click", () => {
           $("inUrl").value = DEFAULTS.url;
           $("inBase").value = DEFAULTS.base;
+          $("inKey").value = "";
         });
         $("dlg").addEventListener("close", () => {
           if ($("dlg").returnValue !== "save") return;
           const url = $("inUrl").value.trim(),
             base = $("inBase").value.trim().replace(/\/+$/, "");
           if (!url || !base) return;
-          cfg = { url, base };
+          cfg = { url, base, key: $("inKey").value.trim().toLowerCase() };
           saveCfg(cfg);
           connect();
         });
